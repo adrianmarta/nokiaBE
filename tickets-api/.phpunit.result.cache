@@ -1,0 +1,1 @@
+{"version":1,"defects":{"TicketsTest::testMissingOperatorReturnsError":4},"times":{"TicketsTest::testMissingOperatorReturnsError":0.011,"TicketsTest::testValidOperatorReturnsArray":0.003}}
