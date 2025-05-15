@@ -40,7 +40,8 @@ try {
 );
     }
 
-    $hashed = password_hash($data['parola'], PASSWORD_DEFAULT);
+    $hashed = $data['parola']; 
+
     $result = sqlsrv_query($conn, "INSERT INTO utilizator (nume, mail, parola, id_project, id_rol) VALUES (?, ?, ?, ?, 1)", [
         $data['nume'], $data['mail'], $hashed, $data['id_project']
     ]);
