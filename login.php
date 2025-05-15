@@ -27,9 +27,14 @@ if ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         sqlsrv_query($conn, "DELETE FROM Tokens WHERE id_user = ?", [$row['id_user']]);
 
         // Generate new token
-        $token = bin2hex(random_bytes(32));
-        $insertToken = "INSERT INTO Tokens (token, id_user) VALUES (?, ?)";
-        sqlsrv_query($conn, $insertToken, [$token, $row['id_user']]);
+        // Generate new token
+$token = bin2hex(random_bytes(32));
+$insertToken = "INSERT INTO Tokens (token, id_user) VALUES (?, ?)";
+sqlsrv_query($conn, $insertToken, [$token, $row['id_user']]);
+
+// ✅ Log login
+sqlsrv_query($conn, "INSERT INTO audit (id_user, actiune) VALUES (?, ?)", [$row['id_user'], 'conectare']);
+
 
         echo json_encode([
             "token" => $token

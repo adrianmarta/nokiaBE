@@ -21,5 +21,14 @@ if (!preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
 }
 
 $token = $matches[1];
+// Lookup user from token
+$sql = "SELECT id_user FROM Tokens WHERE token = ?";
+$stmt = sqlsrv_query($conn, $sql, [$token]);
+
+if ($stmt && ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC))) {
+    // ✅ Log logout
+    sqlsrv_query($conn, "INSERT INTO audit (id_user, actiune) VALUES (?, ?)", [$row['id_user'], 'delogare']);
+}
+
 sqlsrv_query($conn, "DELETE FROM Tokens WHERE token = ?", [$token]);
 echo json_encode(["message" => "Logged out"]);

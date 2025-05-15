@@ -2,12 +2,7 @@
 header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json');
 
-$serverName = "DESKTOP-6LMVUCH";
-$connectionOptions = [
-    "Database" => "TicketsDB",
-    "TrustServerCertificate" => true,
-    "Encrypt" => false
-];
+include 'db.php';
 $conn = sqlsrv_connect($serverName, $connectionOptions);
 
 if (!$conn) {
