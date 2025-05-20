@@ -23,7 +23,14 @@ if ($status) {
 $sql = "
 SELECT 
     t.id, t.incident_title, t.status, t.project, t.description, t.comment, t.assigned_person, t.team_assigned_person, t.created_by, t.team_created_by, t.response_time, s.duration_hours,
+     CASE 
+        WHEN t.response_time IS NULL THEN '-' 
+        WHEN s.duration_hours - t.response_time < 0 THEN 'OUT'
+        ELSE 'IN'
+    END AS IN_OUT_SLA,
     FORMAT(t.start_date, 'yyyy-MM-dd HH:mm:ss') as start_date,
+    FORMAT(t.last_modified_date, 'yyyy-MM-dd HH:mm:ss') as last_modified_date,
+    FORMAT(t.closed_date, 'yyyy-MM-dd HH:mm:ss') as closed_date,
     p.priority AS priority_name
 FROM Tickets t
 JOIN Priority p ON t.priority_id = p.id

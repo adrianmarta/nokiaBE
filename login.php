@@ -17,8 +17,13 @@ $input = json_decode(file_get_contents("php://input"), true);
 $mail = $input['mail'] ?? '';
 $parola = $input['parola'] ?? '';
 
-// Fetch user
-$sql = "SELECT * FROM Utilizator WHERE mail = ?";
+/// Fetch user
+$sql = "
+    SELECT u.*, r.nume_rol 
+    FROM Utilizator u
+    JOIN Rol r ON u.id_rol = r.id_rol
+    WHERE u.mail = ?
+";
 $stmt = sqlsrv_query($conn, $sql, [$mail]);
 
 if ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
@@ -32,7 +37,8 @@ if ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         sqlsrv_query($conn, $insertToken, [$token, $row['id_user']]);
 
         echo json_encode([
-            "token" => $token
+            "token" => $token,
+            "role" => $row['nume_rol']
         ]);
         exit;
     }

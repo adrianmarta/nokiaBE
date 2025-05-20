@@ -66,6 +66,11 @@ SELECT
     t.response_time,
     t.created_by,
     s.duration_hours,
+    CASE 
+        WHEN t.response_time IS NULL THEN '-' 
+        WHEN s.duration_hours - t.response_time < 0 THEN 'OUT'
+        ELSE 'IN'
+    END AS IN_OUT_SLA,
     FORMAT(t.last_modified_date, 'yyyy-MM-dd HH:mm:ss') as last_modified_date,
     FORMAT(t.closed_date, 'yyyy-MM-dd HH:mm:ss') as closed_date
 FROM Tickets t
