@@ -3,6 +3,8 @@ header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json');
 
 include 'db.php';
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
 if (!$conn) {
     echo json_encode(["error" => "Conexiune eșuată"]);
@@ -10,121 +12,91 @@ if (!$conn) {
 }
 
 $period = $_GET['period'] ?? 'all';
-$periodCondition = "1=1";
+$whereClause = "1=1";
+$params = [];
 
 if ($period === 'day') {
-    $periodCondition = "start_date >= CAST(GETDATE() AS DATE)";
+    $whereClause = "CAST(start_date AS DATE) = CAST(GETDATE() AS DATE)";
 } elseif ($period === 'week') {
-    $periodCondition = "start_date >= DATEADD(day, -7, GETDATE())";
+    $startOfWeek = (new DateTime('monday this week'))->setTime(0, 0);
+    $endOfWeek = (clone $startOfWeek)->modify('+7 days');
+    $whereClause = "(start_date >= ? AND start_date < ?)";
+    $params[] = $startOfWeek->format('Y-m-d H:i:s');
+    $params[] = $endOfWeek->format('Y-m-d H:i:s');
 } elseif ($period === 'month') {
-    $periodCondition = "start_date >= DATEADD(month, -1, GETDATE())";
+    $whereClause = "MONTH(start_date) = MONTH(GETDATE()) AND YEAR(start_date) = YEAR(GETDATE())";
 } elseif ($period === 'year') {
-    $periodCondition = "start_date >= DATEADD(year, -1, GETDATE())";
+    $whereClause = "YEAR(start_date) = YEAR(GETDATE())";
 }
 
-// 1. Statistici generale
+// ✅ 1. Stats card
 $statsQuery = "
-SELECT 
-    (SELECT COUNT(*) FROM Tickets WHERE $periodCondition) AS total,
-    (SELECT COUNT(*) FROM Tickets WHERE status = 'Closed' AND $periodCondition) AS closed,
-    (SELECT AVG(DATEDIFF(hour, start_date, closed_date)) FROM Tickets WHERE closed_date IS NOT NULL AND $periodCondition) AS avgTime
+    SELECT 
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END) AS closed,
+        ROUND(AVG(CASE WHEN closed_date IS NOT NULL THEN DATEDIFF(HOUR, start_date, closed_date) ELSE NULL END), 1) AS avgTime
+    FROM Tickets
+    WHERE $whereClause
 ";
-$statsResult = sqlsrv_query($conn, $statsQuery);
+$statsResult = sqlsrv_query($conn, $statsQuery, $params);
+if (!$statsResult) {
+    echo json_encode(["error" => "Eroare la stats query", "details" => sqlsrv_errors()]);
+    exit;
+}
 $stats = sqlsrv_fetch_array($statsResult, SQLSRV_FETCH_ASSOC) ?? ["total" => 0, "closed" => 0, "avgTime" => 0];
-$stats['avgTime'] = $stats['avgTime'] ?? 0;
 
-// 2. Tickete pe zile (opțional)
-$dailyQuery = "
-SELECT 
-    FORMAT(start_date, 'yyyy-MM-dd') AS day,
-    COUNT(*) AS total
-FROM Tickets
-WHERE $periodCondition
-GROUP BY FORMAT(start_date, 'yyyy-MM-dd')
-ORDER BY day ASC
-";
-$dailyResult = sqlsrv_query($conn, $dailyQuery);
+// ✅ 2. Daily chart
 $dailyChart = [];
+$dailyQuery = "
+    SELECT 
+        FORMAT(start_date, 'yyyy-MM-dd') AS day,
+        COUNT(*) AS total
+    FROM Tickets
+    WHERE $whereClause
+    GROUP BY FORMAT(start_date, 'yyyy-MM-dd')
+    ORDER BY day ASC
+";
+$dailyResult = sqlsrv_query($conn, $dailyQuery, $params);
 while ($row = sqlsrv_fetch_array($dailyResult, SQLSRV_FETCH_ASSOC)) {
     $dailyChart[] = $row;
 }
 
-// 3. Lista tickete
-$ticketsQuery = "
-SELECT 
-    t.id,
-    t.incident_title,
-    t.status,
-    t.project,
-    FORMAT(t.start_date, 'yyyy-MM-dd HH:mm:ss') as start_date,
-    p.priority AS priority_name,
-    t.assigned_person,
-    t.description,
-    t.comment,
-    t.team_assigned_person,
-    t.team_created_by,
-    t.response_time,
-    t.created_by,
-    s.duration_hours,
-    CASE 
-        WHEN t.response_time IS NULL THEN '-' 
-        WHEN s.duration_hours - t.response_time < 0 THEN 'OUT'
-        ELSE 'IN'
-    END AS IN_OUT_SLA,
-    FORMAT(t.last_modified_date, 'yyyy-MM-dd HH:mm:ss') as last_modified_date,
-    FORMAT(t.closed_date, 'yyyy-MM-dd HH:mm:ss') as closed_date
-FROM Tickets t
-JOIN Priority p ON t.priority_id = p.id
-JOIN SLA s ON s.id = t.priority_id
-WHERE $periodCondition
-ORDER BY t.start_date DESC
-";
-$ticketsResult = sqlsrv_query($conn, $ticketsQuery);
-$tickets = [];
-while ($row = sqlsrv_fetch_array($ticketsResult, SQLSRV_FETCH_ASSOC)) {
-    $tickets[] = $row;
-}
-
-// 4. Status breakdown pentru Pie Chart
-$statusQuery = "
-SELECT 
-    status,
-    COUNT(*) as count
-FROM Tickets
-WHERE $periodCondition
-GROUP BY status
-";
-$statusResult = sqlsrv_query($conn, $statusQuery);
+// ✅ 3. Status chart
 $statusChart = [];
+$statusQuery = "
+    SELECT status, COUNT(*) AS count
+    FROM Tickets
+    WHERE $whereClause
+    GROUP BY status
+";
+$statusResult = sqlsrv_query($conn, $statusQuery, $params);
 while ($row = sqlsrv_fetch_array($statusResult, SQLSRV_FETCH_ASSOC)) {
     $statusChart[] = $row;
 }
 
-// 5. Tickete Deschise și Închise pe Echipă (corect)
-$teamQuery = "
-SELECT 
-    team_assigned_person,
-    SUM(CASE WHEN status != 'Closed' THEN 1 ELSE 0 END) AS openTickets,
-    SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END) AS closedTickets
-FROM Tickets
-WHERE $periodCondition
-GROUP BY team_assigned_person
-ORDER BY team_assigned_person
-";
-$teamResult = sqlsrv_query($conn, $teamQuery);
+// ✅ 4. Team chart
 $teamChart = [];
+$teamQuery = "
+    SELECT 
+        team_assigned_person,
+        SUM(CASE WHEN status != 'Closed' THEN 1 ELSE 0 END) AS openTickets,
+        SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END) AS closedTickets
+    FROM Tickets
+    WHERE $whereClause
+    GROUP BY team_assigned_person
+    ORDER BY team_assigned_person
+";
+$teamResult = sqlsrv_query($conn, $teamQuery, $params);
 while ($row = sqlsrv_fetch_array($teamResult, SQLSRV_FETCH_ASSOC)) {
     $teamChart[] = $row;
 }
 
-// OUTPUT
+// ✅ Output final
 echo json_encode([
     "stats" => $stats,
     "dailyChart" => $dailyChart,
-    "tickets" => $tickets,
     "statusChart" => $statusChart,
     "teamChart" => $teamChart
 ]);
 
 sqlsrv_close($conn);
-?>
