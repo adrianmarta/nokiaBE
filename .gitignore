@@ -1,0 +1,3 @@
+# ignore database credentials
+db.php
+tickets-api/db.php
