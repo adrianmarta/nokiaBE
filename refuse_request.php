@@ -1,7 +1,8 @@
 <?php
 require_once 'db.php';
 require_once 'auth.php';
-
+ini_set('display_errors', 0);
+error_reporting(E_ALL & ~E_NOTICE);
 header("Access-Control-Allow-Origin: http://localhost:3000");
 header("Access-Control-Allow-Headers: Authorization, Content-Type");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
@@ -14,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 try {
-    $user = authenticate(2);
+    $user = authenticate([2,3]);
     $id_user = $user['id_user'];
     $id_rol = $user['id_rol'];
 
@@ -32,7 +33,9 @@ try {
     }
 
     $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-
+if ($data['id_rol'] == 2 && $id_rol !== 3) {
+    throw new Exception("Only super-admins may approve or reject admin requests.", 403);
+}
     if ($id_rol != 3) {
         $projectCheck = sqlsrv_query(
             $conn,

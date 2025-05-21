@@ -11,47 +11,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $input = json_decode(file_get_contents("php://input"), true);
-
 if (!isset($input["mail"], $input["parola"], $input["nume"], $input["id_project"])) {
     http_response_code(400);
     echo json_encode(["error" => "Missing required fields"]);
     exit;
 }
 
-$mail = trim($input["mail"]);
-$hashedPassword = password_hash($input["parola"], PASSWORD_BCRYPT);
-$nume = trim($input["nume"]);
-$id_project = (int)$input["id_project"];
-$id_rol = 1; // default role
-$id_status = 1; // în așteptare
-$data = date("Y-m-d H:i:s");
+$mail   = trim($input["mail"]);
+$nume   = trim($input["nume"]);
+$proj   = (int)$input["id_project"];
+$hash   = password_hash($input["parola"], PASSWORD_BCRYPT);
+$status = 1; // 1 = pending
 
-// Check duplicates
-$checkUtilizator = sqlsrv_query($conn, "SELECT 1 FROM Utilizator WHERE mail = ?", [$mail]);
-$checkCereri = sqlsrv_query($conn, "SELECT 1 FROM Cereri WHERE mail = ?", [$mail]);
+// map the admin‐checkbox to a requested role:
+//    is_admin = true  → request admin → id_rol = 2
+//    is_admin = false → normal user → id_rol = 1
+$isAdmin = !empty($input['is_admin']) || !empty($input['isAdmin']);
+$id_rol = $isAdmin ? 2 : 1;
 
-if (sqlsrv_has_rows($checkUtilizator)) {
+// duplicate checks
+$u = sqlsrv_query($conn, "SELECT 1 FROM Utilizator WHERE mail = ?", [$mail]);
+$c = sqlsrv_query($conn, "SELECT 1 FROM Cereri    WHERE mail = ?", [$mail]);
+if (sqlsrv_has_rows($u) || sqlsrv_has_rows($c)) {
     http_response_code(409);
-    echo json_encode(["error" => "Email is already registered."]);
+    echo json_encode(["error" => "Email already in use or pending."]);
     exit;
 }
-if (sqlsrv_has_rows($checkCereri)) {
-    http_response_code(409);
-    echo json_encode(["error" => "You already submitted a registration request."]);
-    exit;
-}
 
+// insert request
 $sql = "INSERT INTO Cereri (mail, parola, nume, id_rol, id_project, data_cerere, id_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)";
-
-$params = [$mail, $hashedPassword, $nume, $id_rol, $id_project, $data, $id_status];
-
+        VALUES (?, ?, ?, ?, ?, GETDATE(), ?)";
+$params = [$mail, $hash, $nume, $id_rol, $proj, $status];
 $stmt = sqlsrv_query($conn, $sql, $params);
 
 if ($stmt) {
-    echo json_encode(["message" => "Registration request submitted"]);
+    echo json_encode([
+      "message"   => "Registration request submitted",
+      "requestedRole" => $id_rol === 2 ? "admin" : "user"
+    ]);
 } else {
     http_response_code(500);
     echo json_encode(["error" => "Failed to submit request", "details" => sqlsrv_errors()]);
 }
-?>

@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 try {
-    $user = authenticate(2);
+    $user = authenticate([2,3]);
     $id_user = $user['id_user'];
     $id_rol = $user['id_rol'];
 
@@ -25,6 +25,10 @@ try {
                 c.nume AS fullName,
                 c.mail AS email,
                 p.provider AS projectName,
+                CASE c.id_rol
+                WHEN 2 THEN 'admin'
+                ELSE 'user'
+                END AS rol,
                 s.status AS status
             FROM Cereri c
             JOIN status s ON c.id_status = s.id_status
