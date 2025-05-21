@@ -9,80 +9,53 @@ header("Content-Type: application/json");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
+    echo json_encode(["message" => "Preflight OK"]);
     exit;
 }
 
-// Allow both admin (2) and super_admin (3)
-$user = authenticate(2); // returns user info
-$id_user = $user['id_user'];
-$id_rol = $user['id_rol'];
+try {
+    $user = authenticate(2);
+    $id_user = $user['id_user'];
+    $id_rol = $user['id_rol'];
 
-$input = json_decode(file_get_contents("php://input"), true);
-$id = $input['id_cerere'] ?? null;
+    $input = json_decode(file_get_contents("php://input"), true);
+    $id = $input['id_cerere'] ?? null;
 
-if (!$id) {
-    http_response_code(400);
-    echo json_encode(["error" => "Missing request ID"]);
-    exit;
-}
-
-// Fetch request details
-$sql = "SELECT * FROM cereri WHERE id_cerere = ?";
-$stmt = sqlsrv_query($conn, $sql, [$id]);
-
-if (!$stmt || !sqlsrv_has_rows($stmt)) {
-    http_response_code(404);
-    echo json_encode(["error" => "Request not found"]);
-    exit;
-}
-
-$data = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-
-// 🔒 Check project ownership if not super_admin
-if ($id_rol != 3) {
-    $projectCheck = sqlsrv_query(
-        $conn,
-        "SELECT 1 FROM Projects WHERE id_project = ? AND id_user = ?",
-        [$data['id_project'], $id_user]
-    );
-    if (!sqlsrv_fetch($projectCheck)) {
-        http_response_code(403);
-        echo json_encode(["error" => "You are not allowed to approve requests for this project"]);
-        exit;
+    if (!$id) {
+        throw new Exception("Missing request ID", 400);
     }
-}
 
-// 🧠 Check project exists (valid foreign key)
-$checkProject = sqlsrv_query($conn, "SELECT 1 FROM Project WHERE id_project = ?", [$data['id_project']]);
-if (!sqlsrv_fetch($checkProject)) {
-    http_response_code(400);
-    echo json_encode(["error" => "Invalid project ID"]);
-    exit;
-}
+    $sql = "SELECT * FROM cereri WHERE id_cerere = ?";
+    $stmt = sqlsrv_query($conn, $sql, [$id]);
+    if (!$stmt || !sqlsrv_has_rows($stmt)) {
+        throw new Exception("Request not found", 404);
+    }
+    $data = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
 
-// 🔐 Hash password
-$hashed = password_hash($data['parola'], PASSWORD_DEFAULT);
+    if ($id_rol != 3) {
+       $projectCheck = sqlsrv_query(
+    $conn,
+    "SELECT 1 FROM Utilizator WHERE id_user = ? AND id_project = ?",
+    [$id_user, $data['id_project']]
+);
+    }
 
-// 📝 Create user
-$insert = "INSERT INTO utilizator (nume, mail, parola, id_project, id_rol)
-           VALUES (?, ?, ?, ?, 1)"; // 1 = user
-$result = sqlsrv_query($conn, $insert, [
-    $data['nume'],
-    $data['mail'],
-    $hashed,
-    $data['id_project']
-]);
+    $hashed = $data['parola']; 
 
-if ($result) {
-    // ✅ Mark request as approved
+    $result = sqlsrv_query($conn, "INSERT INTO utilizator (nume, mail, parola, id_project, id_rol) VALUES (?, ?, ?, ?, 1)", [
+        $data['nume'], $data['mail'], $hashed, $data['id_project']
+    ]);
+
+    if (!$result) {
+        throw new Exception("Failed to create user", 500);
+    }
+
     sqlsrv_query($conn, "UPDATE cereri SET id_status = 2 WHERE id_cerere = ?", [$id]);
-
     echo json_encode(["message" => "Request approved and user created"]);
-} else {
-    http_response_code(500);
-    $errors = sqlsrv_errors();
+
+} catch (Throwable $e) {
+    http_response_code($e->getCode() ?: 500);
     echo json_encode([
-        "error" => "Failed to create user",
-        "details" => $errors
+        "error" => $e->getMessage()
     ]);
 }

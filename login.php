@@ -26,15 +26,24 @@ $sql = "
 ";
 $stmt = sqlsrv_query($conn, $sql, [$mail]);
 
+// Fetch user
 if ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+   
     if (password_verify($parola, $row['parola'])) {
         // Delete old token
+   
+
         sqlsrv_query($conn, "DELETE FROM Tokens WHERE id_user = ?", [$row['id_user']]);
 
         // Generate new token
+        
         $token = bin2hex(random_bytes(32));
         $insertToken = "INSERT INTO Tokens (token, id_user) VALUES (?, ?)";
         sqlsrv_query($conn, $insertToken, [$token, $row['id_user']]);
+
+
+        sqlsrv_query($conn, "INSERT INTO audit (id_user, actiune) VALUES (?, ?)", [$row['id_user'], 'conectare']);
+
 
         echo json_encode([
             "token" => $token,
