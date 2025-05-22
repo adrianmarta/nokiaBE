@@ -1,16 +1,7 @@
 <?php
 header("Access-Control-Allow-Origin: *");
 
-
-$serverName = "localhost\\SQLEXPRESS"; 
-$connectionOptions = [
-    "Database" => "TicketsDB",     
-    "Uid" => "root",       
-    "PWD" => "root",        
-    "CharacterSet" => "UTF-8"
-];
-
-$conn = sqlsrv_connect($serverName, $connectionOptions);
+include 'db.php';
 
 if (!$conn) {
     echo json_encode(["error" => "Connection failed", "details" => sqlsrv_errors()]);
