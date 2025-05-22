@@ -4,9 +4,10 @@ header("Access-Control-Allow-Methods: GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json");
 
-include 'db.php';
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
+
+include 'db.php';
 
 if (!$conn) {
     echo json_encode(["error" => "Conexiune eșuată"]);
