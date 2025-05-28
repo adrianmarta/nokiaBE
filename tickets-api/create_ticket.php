@@ -3,7 +3,7 @@ require 'auth_middleware.php';
 
 $user = verifyToken();
 $role = $user['role'];
-include 'db.php';
+include '/../db.php';
 if ($role !== 'superuser') {
     http_response_code(403);
     echo json_encode(["error" => "Nu ai permisiunea să adaugi tickete."]);

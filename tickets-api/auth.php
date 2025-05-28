@@ -1,31 +1,45 @@
 <?php
-require_once __DIR__ . '/vendor/autoload.php';
+require_once '/../db.php';
 
-use Firebase\JWT\JWT;
-use Firebase\JWT\Key;
+function authenticate($requiredRoles = null) {
+    // Grab and validate the Bearer token
+    $headers    = getallheaders();
+    $authHeader = $headers['Authorization'] ?? '';
+    if (! preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
+        http_response_code(401);
+        echo json_encode(["error" => "Missing or invalid token"]);
+        exit;
+    }
+    $token = $matches[1];
 
-// Config
-$secretKey = 'secretulTauFoarteSecret'; // trebuie să fie IDENTIC cu cel din login.php
+    // Lookup token → user + role
+    $sql  = "
+      SELECT t.id_user, u.id_rol 
+      FROM Tokens t
+      JOIN Utilizator u ON t.id_user = u.id_user
+      WHERE t.token = ?
+    ";
+    $stmt = sqlsrv_query($GLOBALS['conn'], $sql, [$token]);
+    if (! $stmt || ! sqlsrv_has_rows($stmt)) {
+        http_response_code(403);
+        echo json_encode(["error" => "Invalid token"]);
+        exit;
+    }
+    $user = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
 
-// Preia tokenul din Header Authorization: Bearer {token}
-$headers = getallheaders();
-$authHeader = $headers['Authorization'] ?? '';
+    // If caller asked for specific roles, enforce them
+    if ($requiredRoles !== null) {
+        // normalize to array
+        $allowed = is_array($requiredRoles)
+            ? $requiredRoles
+            : [$requiredRoles];
 
-if (!$authHeader || !preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
-    http_response_code(401);
-    echo json_encode(["error" => "Token lipsă."]);
-    exit;
+        if (! in_array((int)$user['id_rol'], $allowed, true)) {
+            http_response_code(403);
+            echo json_encode(["error" => "Insufficient permissions"]);
+            exit;
+        }
+    }
+
+    return $user;
 }
-
-$token = $matches[1];
-
-try {
-    $decoded = JWT::decode($token, new Key($secretKey, 'HS256'));
-    $userData = (array) $decoded->data;
-    // Acum $userData['username'], $userData['role'] sunt disponibile
-} catch (Exception $e) {
-    http_response_code(401);
-    echo json_encode(["error" => "Token invalid sau expirat."]);
-    exit;
-}
-?>

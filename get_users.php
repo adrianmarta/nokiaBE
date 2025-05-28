@@ -25,16 +25,17 @@ $id_team  = $rowTeam['id_team'];
 
 // build query
 if ($id_rol === 3) {
-    $sql    = "SELECT id_project, provider FROM Project ORDER BY provider";
+    // super-admin: all users
+    $sql    = "SELECT id_user, nume 
+               FROM Utilizator
+               ORDER BY nume";
     $params = [];
 } else {
-    $sql = "
-        SELECT p.id_project, p.provider
-        FROM Project p
-        JOIN Team tm ON p.id_project = tm.id_project
-        WHERE tm.id_team = ?
-        ORDER BY p.provider
-    ";
+    // admin: only users in their team
+    $sql    = "SELECT id_user, nume 
+               FROM Utilizator
+               WHERE id_team = ?
+               ORDER BY nume";
     $params = [$id_team];
 }
 

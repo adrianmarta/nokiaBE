@@ -2,7 +2,7 @@
 header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json');
 
-include 'db.php';
+include '/../db.php';
 $conn = sqlsrv_connect($serverName, $connectionOptions);
 
 if (!$conn) {

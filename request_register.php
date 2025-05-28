@@ -19,7 +19,7 @@ if (!isset($input["mail"], $input["parola"], $input["nume"], $input["id_project"
 
 $mail   = trim($input["mail"]);
 $nume   = trim($input["nume"]);
-$proj   = (int)$input["id_project"];
+
 $hash   = password_hash($input["parola"], PASSWORD_BCRYPT);
 $status = 1; // 1 = pending
 
@@ -39,9 +39,9 @@ if (sqlsrv_has_rows($u) || sqlsrv_has_rows($c)) {
 }
 
 // insert request
-$sql = "INSERT INTO Cereri (mail, parola, nume, id_rol, id_project, data_cerere, id_status)
+$sql = "INSERT INTO Cereri (mail, parola, nume, id_rol, data_cerere, id_status)
         VALUES (?, ?, ?, ?, ?, GETDATE(), ?)";
-$params = [$mail, $hash, $nume, $id_rol, $proj, $status];
+$params = [$mail, $hash, $nume, $id_rol, $status];
 $stmt = sqlsrv_query($conn, $sql, $params);
 
 if ($stmt) {

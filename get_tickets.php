@@ -25,15 +25,19 @@ $id_team  = $rowTeam['id_team'];
 
 // build query
 if ($id_rol === 3) {
-    $sql    = "SELECT id_project, provider FROM Project ORDER BY provider";
+    // super-admin: all tickets
+    $sql    = "SELECT id, incident_title 
+               FROM Tickets
+               ORDER BY incident_title";
     $params = [];
 } else {
-    $sql = "
-        SELECT p.id_project, p.provider
-        FROM Project p
-        JOIN Team tm ON p.id_project = tm.id_project
+    // admin: only tickets whose project belongs to their team
+     $sql = "
+        SELECT t.id, t.incident_title
+        FROM Tickets t
+        JOIN Team tm ON t.id_project = tm.id_project
         WHERE tm.id_team = ?
-        ORDER BY p.provider
+        ORDER BY t.incident_title
     ";
     $params = [$id_team];
 }

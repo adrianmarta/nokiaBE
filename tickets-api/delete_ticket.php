@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-include 'db.php';
+include '/../db.php';
 
 $conn = sqlsrv_connect($serverName, $connectionOptions);
 
