@@ -10,36 +10,22 @@ if ($_SERVER['REQUEST_METHOD']==='OPTIONS') {
 include 'db.php';
 require_once 'auth.php';
 
-$user   = authenticate([2,3]);
-$id_rol = (int)$user['id_rol'];
+// only super-admins need to see teams
+authenticate([3]);
+
+// optional project filter
 $params = [];
 $where  = '';
-
-// Super-admin: optional project filter
-if ($id_rol === 3 && !empty($_GET['project_id'])) {
-  $where = "WHERE id_project = ?";
+if (!empty($_GET['project_id'])) {
+  $where    = 'WHERE id_project = ?';
   $params[] = (int)$_GET['project_id'];
 }
 
-// Admin (role=2): only tickets for projects your team works on
-elseif ($id_rol === 2) {
-  $tsql     = "SELECT id_team FROM Utilizator WHERE id_user = ?";
-  $stmtTeam = sqlsrv_query($conn, $tsql, [$user['id_user']]);
-  $rowTeam  = sqlsrv_fetch_array($stmtTeam, SQLSRV_FETCH_ASSOC);
-
-  $where = "
-    WHERE id_project IN (
-      SELECT id_project FROM Team WHERE id_team = ?
-    )
-  ";
-  $params[] = $rowTeam['id_team'];
-}
-
 $sql = "
-  SELECT id, incident_title
-  FROM Tickets
+  SELECT id_team, name
+  FROM Team
   {$where}
-  ORDER BY incident_title
+  ORDER BY name
 ";
 $stmt = sqlsrv_query($conn, $sql, $params);
 if (!$stmt) {
