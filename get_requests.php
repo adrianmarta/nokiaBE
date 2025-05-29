@@ -20,22 +20,46 @@ try {
     $id_user = $user['id_user'];
     $id_rol = $user['id_rol'];
 
-    $sql = "
-SELECT
-    c.id_cerere   AS id,
-    c.nume        AS fullName,
-    c.mail        AS email,
-    CASE c.id_rol
-        WHEN 3 THEN 'super_admin'
-        WHEN 2 THEN 'admin'
-        ELSE 'user'
-    END           AS rol,
-    s.status      AS status
-FROM Cereri c
-JOIN status s
-  ON c.id_status = s.id_status;
-    ";
-    $params = [];
+ if ($id_rol === 3) {
+        // super‐admin: see all registration requests
+        $sql    = "
+            SELECT
+                c.id_cerere   AS id,
+                c.nume        AS fullName,
+                c.mail        AS email,
+                CASE c.id_rol
+                    WHEN 3 THEN 'super_admin'
+                    WHEN 2 THEN 'admin'
+                    ELSE 'user'
+                END           AS rol,
+                s.status      AS status
+            FROM Cereri c
+            JOIN status s
+              ON c.id_status = s.id_status
+            ORDER BY c.data_cerere DESC
+        ";
+        $params = [];
+    } else {
+        // admin: see only user‐level requests (id_rol = 1)
+        $sql    = "
+            SELECT
+                c.id_cerere   AS id,
+                c.nume        AS fullName,
+                c.mail        AS email,
+                CASE c.id_rol
+                    WHEN 3 THEN 'super_admin'
+                    WHEN 2 THEN 'admin'
+                    ELSE 'user'
+                END           AS rol,
+                s.status      AS status
+            FROM Cereri c
+            JOIN status s
+              ON c.id_status = s.id_status
+            WHERE c.id_rol = 1
+            ORDER BY c.data_cerere DESC
+        ";
+        $params = [];
+    }
 
     $stmt = sqlsrv_query($conn, $sql, $params);
     if (!$stmt) {

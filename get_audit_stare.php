@@ -100,7 +100,7 @@ $sql = "
         ROW_NUMBER() OVER (ORDER BY a.timp DESC) AS row_number,
         u.nume           AS nume_utilizator,
         act.actiune      ,
-        tm.name          ,
+        tm.name          as echipa,
         p.provider       ,
         s1.nume          AS stare_curenta,
         s2.nume          AS stare_trecuta,

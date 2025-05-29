@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $input = json_decode(file_get_contents("php://input"), true);
-if (!isset($input["mail"], $input["parola"], $input["nume"], $input["id_project"])) {
+if (!isset($input["mail"], $input["parola"], $input["nume"])) {
     http_response_code(400);
     echo json_encode(["error" => "Missing required fields"]);
     exit;
@@ -40,7 +40,7 @@ if (sqlsrv_has_rows($u) || sqlsrv_has_rows($c)) {
 
 // insert request
 $sql = "INSERT INTO Cereri (mail, parola, nume, id_rol, data_cerere, id_status)
-        VALUES (?, ?, ?, ?, ?, GETDATE(), ?)";
+        VALUES (?, ?, ?, ?, GETDATE(), ?)";
 $params = [$mail, $hash, $nume, $id_rol, $status];
 $stmt = sqlsrv_query($conn, $sql, $params);
 

@@ -26,27 +26,13 @@ try {
         throw new Exception("Missing request ID", 400);
     }
 
-    $sql = "SELECT id_project FROM cereri WHERE id_cerere = ?";
-    $stmt = sqlsrv_query($conn, $sql, [$id]);
-    if (!$stmt || !sqlsrv_has_rows($stmt)) {
-        throw new Exception("Request not found", 404);
-    }
-
-    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+   
 if ($data['id_rol'] == 2 && $id_rol !== 3) {
     throw new Exception("Only super-admins may approve or reject admin requests.", 403);
 }
-    if ($id_rol != 3) {
-        $projectCheck = sqlsrv_query(
-            $conn,
-            "SELECT 1 FROM Utilizator WHERE id_user = ? AND id_project = ?",
-            [$id_user, $row['id_project']]
-        );
+    
 
-        if (!$projectCheck || !sqlsrv_fetch($projectCheck)) {
-            throw new Exception("Not authorized to refuse this request", 403);
-        }
-    }
+      
 
     $result = sqlsrv_query($conn, "UPDATE cereri SET id_status = 3 WHERE id_cerere = ?", [$id]);
     if (!$result) {

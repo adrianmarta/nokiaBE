@@ -34,18 +34,13 @@ try {
 if ($data['id_rol'] == 2 && $id_rol !== 3) {
     throw new Exception("Only super-admins may approve or reject admin requests.", 403);
 }
-    if ($id_rol != 3) {
-       $projectCheck = sqlsrv_query(
-    $conn,
-    "SELECT 1 FROM Utilizator WHERE id_user = ? AND id_project = ?",
-    [$id_user, $data['id_project']]
-);
-    }
+    
+    
 
     $hashed = $data['parola']; 
 
-    $result = sqlsrv_query($conn, "INSERT INTO utilizator (nume, mail, parola, id_project, id_rol) VALUES (?, ?, ?, ?, 1)", [
-        $data['nume'], $data['mail'], $hashed, $data['id_project']
+    $result = sqlsrv_query($conn, "INSERT INTO utilizator (nume, mail, parola, id_rol) VALUES (?, ?, ?, 1)", [
+        $data['nume'], $data['mail'], $hashed, 
     ]);
 
     if (!$result) {
