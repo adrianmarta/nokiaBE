@@ -2,6 +2,7 @@
 header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json');
 
+include 'db.php';
 require 'jwt_utils.php'; // Include funcțiile JWT (le-am discutat înainte)
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -30,14 +31,7 @@ if ($payload['role'] !== 'superuser') {
     exit;
 }
 
-// Conectare la baza de date
-$serverName = "DESKTOP-6LMVUCH";
-$connectionOptions = [
-    "Database" => "TicketsDB",
-    "TrustServerCertificate" => true,
-    "Encrypt" => false
-];
-$conn = sqlsrv_connect($serverName, $connectionOptions);
+
 
 if (!$conn) {
     echo json_encode(["error" => "Database connection failed"]);
