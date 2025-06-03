@@ -4,7 +4,7 @@ header("Access-Control-Allow-Methods: POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json");
 
-include 'db.php'; // conexiunea la baza de date
+include '/../db.php'; // conexiunea la baza de date
 
 $input = json_decode(file_get_contents("php://input"), true);
 
@@ -39,7 +39,31 @@ if ($stmt) {
     $newIdQuery = sqlsrv_query($conn, "SELECT SCOPE_IDENTITY() AS id");
     $newIdRow = sqlsrv_fetch_array($newIdQuery, SQLSRV_FETCH_ASSOC);
     $newTicketId = $newIdRow['id'];
+    $statusId = null;
+    $statusLookup = sqlsrv_query($conn, "SELECT id_status FROM status_ticket WHERE nume = ?", [$status]);
+    if ($row = sqlsrv_fetch_array($statusLookup, SQLSRV_FETCH_ASSOC)) {
+        $statusId = $row['id_status'];
+    }
+    $id_project = null;
+    $projectLookup = sqlsrv_query($conn, "SELECT id_project FROM Project WHERE provider = ?", [$project]);
+    if ($row = sqlsrv_fetch_array($projectLookup, SQLSRV_FETCH_ASSOC)) {
+    $id_project = $row['id_project'];
+    } else {
+    echo json_encode(["success" => false, "error" => "Provider invalid"]);
+    exit;
+      }
+    if ($statusId) {
+        // === Inserare în audit_stare ===
+        require_once '/auth.php'; // fișierul care conține funcția `authenticate()`
+        $user = authenticate();   // fără roluri restricționate
+        $id_user = $user['id_user'];
+        $id_actiune = 3; // Adăugare Ticket
 
+        $auditSQL = "INSERT INTO audit_stare (id_user, id_actiune, id_stare_curenta, id_project, timp, id_ticket)
+                     VALUES (?, ?, ?, ?, ?, ?)";
+        $auditParams = [$id_user, $id_actiune, $statusId, $project, $now, $newTicketId];
+        sqlsrv_query($conn, $auditSQL, $auditParams);
+    }
     echo json_encode(["success" => true, "ticket" => [
         "id" => $newTicketId,
         "incident_title" => $incident_title,
@@ -49,6 +73,11 @@ if ($stmt) {
         "status" => $status
     ]]);
 } else {
-    echo json_encode(["success" => false, "error" => "Eroare la inserare"]);
+$errors = sqlsrv_errors();
+echo json_encode([
+    "success" => false,
+    "error" => "Eroare la inserare",
+    "details" => $errors
+]);
 }
 ?>

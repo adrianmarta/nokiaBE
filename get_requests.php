@@ -1,7 +1,9 @@
 <?php
 require_once 'db.php';
 require_once 'auth.php';
-
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 header("Access-Control-Allow-Origin: http://localhost:3000");
 header("Access-Control-Allow-Headers: Authorization, Content-Type");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
@@ -18,37 +20,45 @@ try {
     $id_user = $user['id_user'];
     $id_rol = $user['id_rol'];
 
-    if ($id_rol == 3) {
-        $sql = "
-            SELECT 
-                c.id_cerere AS id,
-                c.nume AS fullName,
-                c.mail AS email,
-                p.provider AS projectName,
+ if ($id_rol === 3) {
+        // super‐admin: see all registration requests
+        $sql    = "
+            SELECT
+                c.id_cerere   AS id,
+                c.nume        AS fullName,
+                c.mail        AS email,
                 CASE c.id_rol
-                WHEN 2 THEN 'admin'
-                ELSE 'user'
-                END AS rol,
-                s.status AS status
+                    WHEN 3 THEN 'super_admin'
+                    WHEN 2 THEN 'admin'
+                    ELSE 'user'
+                END           AS rol,
+                s.status      AS status
             FROM Cereri c
-            JOIN status s ON c.id_status = s.id_status
-            JOIN Project p ON c.id_project = p.id_project";
+            JOIN status s
+              ON c.id_status = s.id_status
+            ORDER BY c.data_cerere DESC
+        ";
         $params = [];
     } else {
-        $sql = "
-            SELECT 
-                c.id_cerere AS id,
-                c.nume AS fullName,
-                c.mail AS email,
-                p.provider AS projectName,
-                s.status AS status
+        // admin: see only user‐level requests (id_rol = 1)
+        $sql    = "
+            SELECT
+                c.id_cerere   AS id,
+                c.nume        AS fullName,
+                c.mail        AS email,
+                CASE c.id_rol
+                    WHEN 3 THEN 'super_admin'
+                    WHEN 2 THEN 'admin'
+                    ELSE 'user'
+                END           AS rol,
+                s.status      AS status
             FROM Cereri c
-            JOIN status s ON c.id_status = s.id_status
-            JOIN Project p ON c.id_project = p.id_project
-            WHERE c.id_project = (
-                SELECT id_project FROM Utilizator WHERE id_user = ?
-            )";
-        $params = [$id_user];
+            JOIN status s
+              ON c.id_status = s.id_status
+            WHERE c.id_rol = 1
+            ORDER BY c.data_cerere DESC
+        ";
+        $params = [];
     }
 
     $stmt = sqlsrv_query($conn, $sql, $params);
