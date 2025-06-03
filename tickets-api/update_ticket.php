@@ -24,7 +24,7 @@ $data = json_decode(file_get_contents("php://input"), true);
 $id = $data['id'] ?? null;
 $status = $data['status'] ?? null;
 
-if (!$id || !$status) {
+if (!$id ) {
     http_response_code(400);
     echo json_encode(["error" => "ID-ul sau statusul lipsesc."]);
     exit();

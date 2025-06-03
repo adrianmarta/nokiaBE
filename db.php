@@ -1,12 +1,11 @@
 <?php
-$serverName = "DESKTOP-V4GM3GQ\SQLEXPRESS08";
+$serverName = "USER\SQLEXPRESS";
 
- $connectionOptions = [
-    "Database" => "nokia",
-    "Uid" => "my_user",              // Replace with your username
-    "PWD" => "1q2w",     // Replace with your password
-    "TrustServerCertificate" => true  
- ];
+$connectionOptions = [
+    "Database" => "TicketsDB",
+    "Uid" => "root",            // Utilizatorul SQL
+    "PWD" => "root"  
+];
 
 $conn = sqlsrv_connect($serverName, $connectionOptions);
 
