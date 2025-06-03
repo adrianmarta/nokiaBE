@@ -8,7 +8,7 @@ require_once 'db.php';
 
 header('Content-Type: application/json');
 
-$sql = "SELECT id_user, nume, mail FROM Utilizator WHERE rol = 'admin'";
+$sql = "SELECT id_user, nume, mail FROM Utilizator WHERE id_rol = '2'";
 $stmt = sqlsrv_query($conn, $sql);
 
 $admins = [];
