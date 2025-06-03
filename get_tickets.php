@@ -39,7 +39,7 @@ $sql = "
   SELECT id, incident_title
   FROM Tickets
   {$where}
-  ORDER BY incident_title
+  ORDER BY id
 ";
 $stmt = sqlsrv_query($conn, $sql, $params);
 if (!$stmt) {
