@@ -46,14 +46,21 @@ if (!isset($input['ticket_id']) || !isset($input['assigned_person'])) {
     exit();
 }
 
+require_once __DIR__ . '/../auth.php';
 $ticket_id = $input['ticket_id'];
 $assigned_email = trim($input['assigned_person']);
+$user = authenticate(); // returneaza id_user, id_rol
+$currentUserId = $user['id_user'];
 
-if (!is_numeric($ticket_id)) {
-    http_response_code(400);
-    echo json_encode(["error" => "Invalid ticket ID"]);
-    exit();
+$projectQuery = "SELECT id_project FROM Project WHERE id_user = ?";
+$projectStmt = sqlsrv_query($conn, $projectQuery, [$currentUserId]);
+
+if (!$projectStmt || !sqlsrv_fetch($projectStmt)) {
+    echo json_encode(["error" => "Nu s-a putut obține proiectul echipei"]);
+    exit;
 }
+
+$id_project = sqlsrv_get_field($projectStmt, 0);
 
 try {
     // 1. Găsim id_user și id_team al utilizatorului
@@ -133,7 +140,38 @@ try {
 
     $rowsAffected = sqlsrv_rows_affected($updateStmt);
     sqlsrv_free_stmt($updateStmt);
-
+    $id_actiune      = 3; 
+    $statusid=4;
+$auditSql    = "
+    INSERT INTO audit_stare (
+        id_user,
+        id_actiune,
+        id_stare_curenta,
+        id_project,
+        timp,
+        id_ticket
+    )
+    VALUES (?, ?, ?, ?, GETDATE(),?)
+";
+$auditParams = [
+    $currentUserId,
+    $id_actiune,
+    $statusid,
+    $id_project,
+    $ticket_id
+];
+$auditResult = sqlsrv_query($conn, $auditSql, $auditParams);
+if ($auditResult === false) {
+    // Dacă insert‐ul în audit_stare eșuează, trimitem imediat răspuns de eroare
+    http_response_code(500);
+    echo json_encode([
+        "error_phase"   => "audit_insert_failed",
+        "audit_sql"     => $auditSql,
+        "audit_params"  => $auditParams,
+        "sqlsrv_errors" => sqlsrv_errors()
+    ]);
+    exit;
+}
     if ($rowsAffected > 0) {
         // 5. Obținem response_time calculat pentru a-l returna în răspuns
         $getResponseTimeSql = "SELECT response_time FROM tickets WHERE id = ?";
@@ -144,7 +182,7 @@ try {
             $calculated_response_time = sqlsrv_get_field($getResponseTimeStmt, 0);
         }
         sqlsrv_free_stmt($getResponseTimeStmt);
-
+        
         http_response_code(200);
         echo json_encode([
             "success" => true,
@@ -156,6 +194,7 @@ try {
             "response_time" => $calculated_response_time,
             "was_previously_assigned" => !is_null($current_assigned_person) && $current_assigned_person != 0
         ]);
+        
     } else {
         http_response_code(400);
         echo json_encode(["error" => "Nicio modificare realizată"]);

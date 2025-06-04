@@ -61,7 +61,7 @@ if ($stmt) {
 
         $auditSQL = "INSERT INTO audit_stare (id_user, id_actiune, id_stare_curenta, id_project, timp, id_ticket)
                      VALUES (?, ?, ?, ?, ?, ?)";
-        $auditParams = [$id_user, $id_actiune, $statusId, $project, $now, $newTicketId];
+        $auditParams = [$id_user, $id_actiune, $statusId, $id_project, $now, $newTicketId];
         sqlsrv_query($conn, $auditSQL, $auditParams);
     }
     echo json_encode(["success" => true, "ticket" => [

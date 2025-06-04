@@ -67,7 +67,80 @@ $updateStmt = sqlsrv_query($conn, $update, $params);
 if (!$updateStmt) {
     http_response_code(500);
     echo json_encode(["error" => "Failed to update", "details" => sqlsrv_errors()]);
-} else {
-    http_response_code(200);
-    echo json_encode(["message" => "Ticket updated successfully"]);
 }
+$statusLookupSql  = "SELECT id_status FROM status_ticket WHERE nume = ?";
+$statusLookupStmt = sqlsrv_query($conn, $statusLookupSql, [$status]);
+
+if (!$statusLookupStmt) {
+    http_response_code(500);
+    echo json_encode([
+        "error_phase"   => "status_lookup_failed",
+        "sqlsrv_errors" => sqlsrv_errors()
+    ]);
+    exit;
+}
+if (!sqlsrv_fetch($statusLookupStmt)) {
+    http_response_code(400);
+    echo json_encode(["error" => "Status '$status' nu există în tabelul status_ticket"]);
+    exit;
+}
+$status_id = sqlsrv_get_field($statusLookupStmt, 0);
+sqlsrv_free_stmt($statusLookupStmt);
+
+if ($status_id === null) {
+    http_response_code(500);
+    echo json_encode(["error" => "ID-ul statusului a fost NULL"]);
+    exit;
+}
+
+
+$projectLookupSql  = "SELECT project FROM Tickets WHERE id = ?";
+$projectLookupStmt = sqlsrv_query($conn, $projectLookupSql, [$ticketId]);
+
+if (!$projectLookupStmt || !sqlsrv_fetch($projectLookupStmt)) {
+    http_response_code(500);
+    echo json_encode(["error" => "Nu s-a putut obține proiectul pentru ticket"]);
+    exit;
+}
+$project_id = sqlsrv_get_field($projectLookupStmt, 0);
+sqlsrv_free_stmt($projectLookupStmt);
+
+
+$auditSql = "
+    INSERT INTO audit_stare (
+        id_user,
+        id_actiune,
+        id_stare_curenta,
+        id_project,
+        timp,
+        id_ticket
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+";
+
+
+$auditParams = [
+    $currentUserId,  
+    4,               
+    $status_id,      
+    $project_id,     
+    $lastModified,   
+    $ticketId      
+];
+
+$auditStmt = sqlsrv_query($conn, $auditSql, $auditParams);
+if (!$auditStmt) {
+    http_response_code(500);
+    echo json_encode([
+        "error_phase"   => "audit_insert_failed",
+        "audit_sql"     => $auditSql,
+        "audit_params"  => $auditParams,
+        "sqlsrv_errors" => sqlsrv_errors()
+    ]);
+    exit;
+}
+http_response_code(200);
+echo json_encode(["message" => "Ticket updated and audit added successfully"]);
+
+sqlsrv_close($conn);
+?>

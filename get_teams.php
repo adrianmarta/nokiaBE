@@ -45,9 +45,7 @@ try {
                 t.name
         ";
     } else {
-        // Admin (rol = 2): return only teams under the projects that this admin owns
-        // We ignore any project_id parameter here (or you could validate it belongs to this admin).
-        $sql    = "
+       $sql = "
             SELECT
                 t.id_team,
                 t.name

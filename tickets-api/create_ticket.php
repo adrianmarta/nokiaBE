@@ -182,6 +182,39 @@ if ($updateStmt === false) {
     ]);
     exit;
 }
+    $id_actiune      = 5; 
+    $statusid=4;
+$auditSql    = "
+    INSERT INTO audit_stare (
+        id_user,
+        id_actiune,
+        id_stare_curenta,
+        id_project,
+        timp,
+        id_ticket
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+";
+$auditParams = [
+    $currentUserId,
+    $id_actiune,
+    $statusid,
+    $id_project,
+    $now,
+    $insertedId
+];
+$auditResult = sqlsrv_query($conn, $auditSql, $auditParams);
+if ($auditResult === false) {
+    // Dacă insert‐ul în audit_stare eșuează, trimitem imediat răspuns de eroare
+    http_response_code(500);
+    echo json_encode([
+        "error_phase"   => "audit_insert_failed",
+        "audit_sql"     => $auditSql,
+        "audit_params"  => $auditParams,
+        "sqlsrv_errors" => sqlsrv_errors()
+    ]);
+    exit;
+}
 
 echo json_encode([
     "message" => "Ticket adăugat cu succes!",

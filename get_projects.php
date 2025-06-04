@@ -28,14 +28,13 @@ if ($id_rol === 3) {
     $sql    = "SELECT id_project, provider FROM Project ORDER BY provider";
     $params = [];
 } else {
-    $sql = "
-        SELECT p.id_project, p.provider
-        FROM Project p
-        JOIN Team tm ON p.id_project = tm.id_project
-        WHERE tm.id_team = ?
-        ORDER BY p.provider
+     $sql    = "
+        SELECT id_project, provider, id_user
+        FROM Project
+        WHERE id_user = ?
+        ORDER BY provider
     ";
-    $params = [$id_team];
+    $params = [$id_user ];
 }
 
 $stmt = sqlsrv_query($conn, $sql, $params);

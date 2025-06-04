@@ -17,7 +17,7 @@ $where  = '';
 
 // Super-admin: optional project filter
 if ($id_rol === 3 && !empty($_GET['project_id'])) {
-  $where = "WHERE id_project = ?";
+  $where = "WHERE project = ?";
   $params[] = (int)$_GET['project_id'];
 }
 
@@ -28,7 +28,7 @@ elseif ($id_rol === 2) {
   $rowTeam  = sqlsrv_fetch_array($stmtTeam, SQLSRV_FETCH_ASSOC);
 
   $where = "
-    WHERE id_project IN (
+    WHERE project IN (
       SELECT id_project FROM Team WHERE id_team = ?
     )
   ";
@@ -36,7 +36,7 @@ elseif ($id_rol === 2) {
 }
 
 $sql = "
-  SELECT id, incident_title
+  SELECT ticket_id, id
   FROM Tickets
   {$where}
   ORDER BY id
