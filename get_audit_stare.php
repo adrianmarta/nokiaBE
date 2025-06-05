@@ -63,10 +63,25 @@ try {
 
     // 4a) Team filter:
     if ($id_rol === 2) {
-        // Admin must see only logs for tickets whose assigned team equals their own team
+    // Restrict to teams under projects owned by this admin
+    $filters[] = "t.team_assigned_person IN (
+        SELECT t2.id_team
+        FROM Team AS t2
+        JOIN Project AS p ON t2.id_project = p.id_project
+        WHERE p.id_user = ?
+    )";
+    $params[] = $id_user;
+
+    // If team_id is specified, further filter to that exact team
+    if (!empty($_GET['team_id'])) {
         $filters[] = "t.team_assigned_person = ?";
-        $params[]  = $id_team;
+        $params[]  = (int)$_GET['team_id'];
     }
+} elseif ($id_rol === 3 && !empty($_GET['team_id'])) {
+    // Super-admin can filter directly
+    $filters[] = "t.team_assigned_person = ?";
+    $params[]  = (int)$_GET['team_id'];
+}
     elseif ($id_rol === 3 && !empty($_GET['team_id'])) {
         // Super-admin can filter by any team_id
         $filters[] = "t.team_assigned_person = ?";
@@ -98,11 +113,11 @@ try {
     }
 
     // 4e) Ticket filter:
-    if (!empty($_GET['ticket_id'])) {
-        $filters[] = "a.id_ticket = ?";
-        $params[]  = (int)$_GET['ticket_id'];
-    }
-
+  if (!empty($_GET['ticket_id'])) {
+    $filters[] = "(t.ticket_id LIKE ? OR CAST(a.id_ticket AS NVARCHAR) LIKE ?)";
+    $params[]  = '%' . $_GET['ticket_id'] . '%';
+    $params[]  = '%' . $_GET['ticket_id'] . '%';
+}
     // Combine filters into a single WHERE clause
     $where = "";
     if (count($filters) > 0) {

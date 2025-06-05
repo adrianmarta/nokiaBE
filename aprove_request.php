@@ -55,19 +55,27 @@ try {
         // 5a) Verify that the provided id_team belongs to a project this approver controls.
         //     If approver is rol=3, they can choose ANY team. If approver is rol=2, they can only choose
         //     from their own project’s teams (like before).
-        $sqlCheckTeam = "
-            SELECT 1
-            FROM dbo.Team AS t
-            INNER JOIN dbo.Project AS p
-              ON t.id_project = p.id_project
-            WHERE 
-              t.id_team = ?
-              AND p.id_user = ?
-        ";
-        $stmtCheck = sqlsrv_query($conn, $sqlCheckTeam, [$idTeam, $idUser]);
-        if (!$stmtCheck || !sqlsrv_has_rows($stmtCheck)) {
-            throw new Exception("Invalid team or not under your project", 403);
-        }
+        if ($idRol === 3) {
+    // Super-admin can approve any team, just ensure team exists
+    $sqlCheckTeam = "SELECT 1 FROM dbo.Team WHERE id_team = ?";
+    $stmtCheck = sqlsrv_query($conn, $sqlCheckTeam, [$idTeam]);
+} else {
+    // Admins can only approve within their projects
+    $sqlCheckTeam = "
+        SELECT 1
+        FROM dbo.Team AS t
+        INNER JOIN dbo.Project AS p
+          ON t.id_project = p.id_project
+        WHERE 
+          t.id_team = ?
+          AND p.id_user = ?
+    ";
+    $stmtCheck = sqlsrv_query($conn, $sqlCheckTeam, [$idTeam, $idUser]);
+}
+
+if (!$stmtCheck || !sqlsrv_has_rows($stmtCheck)) {
+    throw new Exception("Invalid team or not under your project", 403);
+}
 
         // 5b) Insert the new user with role = 1
         //      Assume 'parola' in Cereri is already hashed.
