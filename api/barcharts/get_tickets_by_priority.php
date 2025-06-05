@@ -2,7 +2,7 @@
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json");
 
-include '../db.php';
+include '../db.php'; // Ensure this path is correct for your database connection
 
 if (!$conn) {
     http_response_code(500);
@@ -11,6 +11,7 @@ if (!$conn) {
 }
 
 $priorities = [];
+// This SELECT is fine as it fetches the list of available priorities for the loop
 $sql = "SELECT priority FROM Priority ORDER BY id";
 $stmt = sqlsrv_query($conn, $sql);
 
@@ -22,7 +23,7 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $priorities[] = $row['priority'];
 }
 
-$statuses = [];
+// $statuses variable is declared but not used in this particular file, which is fine.
 
 $teamCreatedByName = isset($_GET['team_created_by_name']) ? $_GET['team_created_by_name'] : null;
 $teamAssignedPersonName = isset($_GET['team_assigned_person_name']) ? $_GET['team_assigned_person_name'] : null;
@@ -38,7 +39,7 @@ $slaStatus = isset($_GET['slaStatus']) ? $_GET['slaStatus'] : null;
 $startDate = isset($_GET['startDate']) ? $_GET['startDate'] : null;
 $endDate = isset($_GET['endDate']) ? $_GET['endDate'] : null;
 
-// defaults
+// defaults for dates
 if (!$startDate && !$endDate) {
     $startDate = date('Y-m-d', strtotime('-1 year'));
     $endDate = date('Y-m-d');
@@ -67,7 +68,9 @@ foreach ($priorities as $filterValue) {
         $params[] = $teamAssignedPersonName;
     }
 
-    if ($priority) {
+    // Only add priority filter if it's explicitly passed AND it's different from the current loop's $filterValue
+    // Otherwise, it's redundant or could conflict.
+    if ($priority && $priority !== $filterValue) { // Added condition to prevent redundant filter
         $where .= " AND p.priority = ?";
         $params[] = $priority;
     }
@@ -103,7 +106,7 @@ foreach ($priorities as $filterValue) {
         $params[] = $endDate . " 23:59:59";
     }
 
-    // COUNT query
+    // COUNT query - No changes needed here as it only counts
     $sqlCount = "
         SELECT COUNT(*) AS cnt
         FROM Tickets t
@@ -124,10 +127,17 @@ foreach ($priorities as $filterValue) {
         $count = $row['cnt'];
     }
 
-    // TICKETS query
+    // --- CRITICAL CHANGE START: MODIFYING THE TICKETS QUERY TO INCLUDE NAMES ---
     $sqlTickets = "
-        SELECT t.*
-        FROM Tickets t
+        SELECT
+            t.*,                                   -- Select all columns from Tickets table
+            p.priority AS priority_name,           -- Select 'priority' from Priority table, alias as 'priority_name'
+            tp.provider AS project_name,           -- Select 'provider' from Project table, alias as 'project_name'
+            tcb.name AS team_created_by_name,      -- Select 'name' from Team table (for created by), alias as 'team_created_by_name'
+            tap.name AS team_assigned_person_name, -- Select 'name' from Team table (for assigned person), alias as 'team_assigned_person_name'
+            sla.duration_hours AS sla_duration     -- (Optional: Include SLA duration if your React tooltip needs it for display/logic)
+        FROM
+            Tickets t
         INNER JOIN Priority p ON t.priority_id = p.id
         LEFT JOIN Team tcb ON t.team_created_by = tcb.id_team
         LEFT JOIN Team tap ON t.team_assigned_person = tap.id_team
@@ -147,14 +157,27 @@ foreach ($priorities as $filterValue) {
                 $row[$key] = $value->format('Y-m-d H:i:s');
             }
         }
+        // Add null coalescing to ensure these fields always have a string value
+        $row['priority_name'] = $row['priority_name'] ?? 'N/A'; // Changed default to 'N/A' as seen in your image
+        $row['project_name'] = $row['project_name'] ?? 'N/A';
+        $row['team_created_by_name'] = $row['team_created_by_name'] ?? 'N/A';
+        $row['team_assigned_person_name'] = $row['team_assigned_person_name'] ?? 'N/A';
+
         $tickets[] = $row;
     }
+    // --- CRITICAL CHANGE END ---
 
     $response[] = [
-        'priority' => $filterValue,
+        'priority' => $filterValue, // This 'priority' is the category name for the chart, e.g., "Critical"
         'count' => $count,
-        'tickets' => $tickets,
+        'tickets' => $tickets, // This array now contains ticket objects with 'priority_name', 'project_name', 'team_created_by_name', 'team_assigned_person_name'
     ];
 }
 
 echo json_encode($response, JSON_PRETTY_PRINT);
+
+// No need to free $stmt and close $conn here if you iterate, as they are used in the loop
+// and will be closed automatically when script finishes or if db.php handles persistent connection.
+// If your db.php requires explicit closing at the end of the script, place it outside the loop.
+
+?>

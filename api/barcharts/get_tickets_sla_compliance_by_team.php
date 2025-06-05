@@ -34,18 +34,20 @@ if (!$startDate && !$endDate) {
 }
 
 $teams = [];
-$sql = "SELECT id_team FROM Team ORDER BY id_team";
+// --- MODIFIED: Fetch both ID and Name for Team table ---
+$sql = "SELECT id_team, name FROM Team ORDER BY id_team";
 $stmt = sqlsrv_query($conn, $sql);
 if ($stmt === false) {
     die(print_r(sqlsrv_errors(), true));
 }
 while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-    $teams[] = $row['id_team'];
+    $teams[$row['id_team']] = $row['name']; // Store ID => Name mapping
 }
+// --- END MODIFIED ---
 
 $response = [];
 
-foreach ($teams as $teamId) {
+foreach ($teams as $teamId => $teamName) { // Iterate using both ID and Name
     $where = "
         t.team_assigned_person = ?
         AND YEAR(t.start_date) = YEAR(GETDATE()) - 1
@@ -55,7 +57,7 @@ foreach ($teams as $teamId) {
             (t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours)
         )
     ";
-    $params = [$teamId];
+    $params = [$teamId]; // Use ID for filtering
 
     if ($teamCreatedByName) {
         $where .= " AND tcb.name = ?";
@@ -73,7 +75,7 @@ foreach ($teams as $teamId) {
     }
 
     if ($project) {
-        $where .= " AND pr.provider = ?";
+        $where .= " AND pr.provider = ?"; // Assuming 'provider' is the project name column
         $params[] = $project;
     }
 
@@ -89,13 +91,13 @@ foreach ($teams as $teamId) {
 
     if ($slaStatus) {
         $where .= " AND (
-            CASE
-                WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
-                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
-                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
-                ELSE 'Other'
-            END
-        ) = ?";
+                CASE
+                    WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
+                    WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
+                    WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
+                    ELSE 'Other'
+                END
+            ) = ?";
         $params[] = $slaStatus;
     }
 
@@ -105,15 +107,22 @@ foreach ($teams as $teamId) {
         $params[] = $endDate . " 23:59:59";
     }
 
+    // --- MODIFIED SQLTickets SELECT clause ---
     $sqlTickets = "
-        SELECT t.*, tm.name as team_name, p.id as priority_id, sla.duration_hours,
-            DATEDIFF(HOUR, t.start_date, ISNULL(t.closed_date, GETDATE())) as hours_taken,
+        SELECT
+            t.*,
+            tm.name AS team_assigned_person_name, -- Renamed for consistency with frontend expectation
+            p.priority AS priority_name, -- Added priority name
+            pr.provider AS project_name, -- Added project name
+            tcb.name AS team_created_by_name, -- Added created by team name
+            sla.duration_hours,
+            DATEDIFF(HOUR, t.start_date, ISNULL(t.closed_date, GETDATE())) AS hours_taken,
             CASE
                 WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
                 WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
                 WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
                 ELSE 'Other'
-            END as sla_status
+            END AS sla_status
         FROM Tickets t
         INNER JOIN Priority p ON t.priority_id = p.id
         INNER JOIN SLA sla ON p.id = sla.priority_id
@@ -123,6 +132,7 @@ foreach ($teams as $teamId) {
         LEFT JOIN Project pr ON t.project = pr.id_project
         WHERE $where
     ";
+    // --- END MODIFIED ---
 
     $stmtTickets = sqlsrv_query($conn, $sqlTickets, $params);
     if ($stmtTickets === false) {
@@ -151,7 +161,7 @@ foreach ($teams as $teamId) {
     }
 
     $response[] = [
-        'name' => count($tickets) > 0 ? $tickets[0]['team_name'] : null,
+        'name' => $teamName, // Use the fetched team name directly
         'Met' => $counts['Met'],
         'Exceeded' => $counts['Exceeded'],
         'In Progress' => $counts['In Progress'],
@@ -160,3 +170,4 @@ foreach ($teams as $teamId) {
 }
 
 echo json_encode($response, JSON_PRETTY_PRINT);
+?>

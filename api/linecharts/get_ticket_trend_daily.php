@@ -25,17 +25,31 @@ if ($sla) {
 $slaStatus = isset($_GET['slaStatus']) ? $_GET['slaStatus'] : null;
 
 $sql = "
-    SELECT t.*
+    SELECT
+        t.*,
+        p.priority AS priority_name,              -- Added for tooltip
+        tcb.name AS team_created_by_name,         -- Added for tooltip
+        tap.name AS team_assigned_person_name,    -- Added for tooltip
+        pr.provider AS project_name,              -- Added for tooltip
+        sla.duration_hours,                       -- Added for SLA calculation in tooltip
+        DATEDIFF(HOUR, t.start_date, ISNULL(t.closed_date, GETDATE())) AS hours_taken, -- Added for SLA calculation in tooltip
+        CASE                                      -- Added for SLA calculation in tooltip
+            WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
+            WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
+            WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
+            ELSE 'Other'
+        END AS sla_status
     FROM Tickets t
     LEFT JOIN Priority p ON t.priority_id = p.id
     LEFT JOIN Team tcb ON t.team_created_by = tcb.id_team
     LEFT JOIN Team tap ON t.team_assigned_person = tap.id_team
     LEFT JOIN Project pr ON t.project = pr.id_project
     LEFT JOIN SLA sla ON t.priority_id = sla.priority_id
-    WHERE 
+    WHERE
         ((t.start_date BETWEEN ? AND ?)
         OR (t.closed_date BETWEEN ? AND ?))
 ";
+
 
 $params = [$startDate, $endDate, $startDate, $endDate];
 

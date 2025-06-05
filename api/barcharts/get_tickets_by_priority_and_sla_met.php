@@ -68,9 +68,9 @@ $response = [];
 
 foreach ($priorities as $filterValue) {
     $where = "p.priority = ?
-          AND YEAR(t.start_date) = YEAR(GETDATE()) - 1
-          AND t.closed_date IS NOT NULL
-          AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours";
+             AND YEAR(t.start_date) = YEAR(GETDATE()) - 1
+             AND t.closed_date IS NOT NULL
+             AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours";
     $params = [$filterValue];
 
     if ($teamCreatedByName) {
@@ -89,7 +89,7 @@ foreach ($priorities as $filterValue) {
     }
 
     if ($project) {
-        $where .= " AND tp.provider = ?";
+        $where .= " AND tp.provider = ?"; // Assuming 'provider' is the project name column
         $params[] = $project;
     }
 
@@ -104,13 +104,13 @@ foreach ($priorities as $filterValue) {
     }
     if ($slaStatus) {
         $where .= " AND (
-            CASE
-                WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
-                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
-                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
-                ELSE 'Other'
-            END
-        ) = ?";
+                CASE
+                    WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
+                    WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
+                    WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
+                    ELSE 'Other'
+                END
+            ) = ?";
         $params[] = $slaStatus;
     }
     if ($startDate && $endDate) {
@@ -139,8 +139,14 @@ foreach ($priorities as $filterValue) {
         $count = $row['cnt'];
     }
 
+    // --- MODIFIED SQL TICKETS QUERY ---
     $sqlTickets = "
-        SELECT t.*
+        SELECT
+            t.*,
+            p.priority AS priority_name,
+            tp.provider AS project_name, -- Assuming 'provider' column in Project table stores the project name
+            tap.name AS team_assigned_person_name,
+            tcb.name AS team_created_by_name
         FROM Tickets t
         INNER JOIN Priority p ON t.priority_id = p.id
         LEFT JOIN Team tcb ON t.team_created_by = tcb.id_team
@@ -149,6 +155,8 @@ foreach ($priorities as $filterValue) {
         INNER JOIN SLA sla ON t.priority_id = sla.priority_id
         WHERE $where
     ";
+    // --- END MODIFIED SQL TICKETS QUERY ---
+
     $stmtTickets = sqlsrv_query($conn, $sqlTickets, $params);
     if ($stmtTickets === false) {
         die(print_r(sqlsrv_errors(), true));
@@ -163,7 +171,7 @@ foreach ($priorities as $filterValue) {
         $tickets[] = $row;
     }
     $response[] = [
-        'priority' => $filterValue,
+        'priority' => $filterValue, // This is still the raw priority, not the name
         'count' => $count,
         'tickets' => $tickets,
     ];
@@ -171,3 +179,4 @@ foreach ($priorities as $filterValue) {
 
 
 echo json_encode($response, JSON_PRETTY_PRINT);
+?>

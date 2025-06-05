@@ -22,6 +22,7 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $priorities[] = $row['priority'];
 }
 
+// statuses is declared but not used, so keeping it as is.
 $statuses = [];
 
 $teamCreatedByName = isset($_GET['team_created_by_name']) ? $_GET['team_created_by_name'] : null;
@@ -54,40 +55,50 @@ $currentYear = date('Y');
 $response = [];
 
 foreach ($priorities as $filterValue) {
-    $where = "p.priority = ? AND YEAR(t.start_date) = ?";
-    $params = [$filterValue, $currentYear];
+    // Start building the WHERE clause and parameters
+    $whereConditions = ["p.priority = ?"];
+    $params = [$filterValue];
+
+    // Always filter by current year based on start_date, as per original logic
+    // But be careful if this conflicts with startDate/endDate filter
+    // If startDate/endDate are explicitly set, the YEAR filter might be redundant or conflicting
+    // For now, keeping it as it was in your original code.
+    $whereConditions[] = "YEAR(t.start_date) = ?";
+    $params[] = $currentYear;
+
 
     if ($teamCreatedByName) {
-        $where .= " AND tcb.name = ?";
+        $whereConditions[] = "tcb.name = ?";
         $params[] = $teamCreatedByName;
     }
 
     if ($teamAssignedPersonName) {
-        $where .= " AND tap.name = ?";
+        $whereConditions[] = "tap.name = ?";
         $params[] = $teamAssignedPersonName;
     }
 
-    if ($priority) {
-        $where .= " AND p.priority = ?";
-        $params[] = $priority;
-    }
+    // The current loop is filtering by 'p.priority', so no need to add 'priority' filter here
+    // if ($priority) {
+    //     $whereConditions[] = "p.priority = ?";
+    //     $params[] = $priority;
+    // }
 
     if ($project) {
-        $where .= " AND tp.provider = ?";
+        $whereConditions[] = "tp.provider = ?";
         $params[] = $project;
     }
 
     if ($status) {
-        $where .= " AND t.status = ?";
+        $whereConditions[] = "t.status = ?";
         $params[] = $status;
     }
 
     if ($sla) {
-        $where .= " AND sla.duration_hours = ?";
+        $whereConditions[] = "sla.duration_hours = ?";
         $params[] = $sla;
     }
     if ($slaStatus) {
-        $where .= " AND (
+        $whereConditions[] = " (
             CASE
                 WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
                 WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
@@ -98,10 +109,16 @@ foreach ($priorities as $filterValue) {
         $params[] = $slaStatus;
     }
     if ($startDate && $endDate) {
-        $where .= " AND t.assigned_date BETWEEN ? AND ?";
+        // Correctly apply date range to start_date or closed_date, similar to trend charts
+        // Assuming 'start_date' for consistency with YEAR filter, but you might need to adjust based on exact chart logic
+        // If 'assigned_date' is a relevant column for this chart, use that.
+        // Based on previous code, 'assigned_date' was used, so keeping it.
+        $whereConditions[] = "t.assigned_date BETWEEN ? AND ?";
         $params[] = $startDate;
         $params[] = $endDate . " 23:59:59";
     }
+
+    $where = implode(" AND ", $whereConditions);
 
     // COUNT query
     $sqlCount = "
@@ -124,9 +141,22 @@ foreach ($priorities as $filterValue) {
         $count = $row['cnt'];
     }
 
-    // TICKETS query
+    // TICKETS query - Added selected fields for tooltips
     $sqlTickets = "
-        SELECT t.*
+        SELECT
+            t.*,
+            p.priority AS priority_name,
+            tcb.name AS team_created_by_name,
+            tap.name AS team_assigned_person_name,
+            tp.provider AS project_name,
+            sla.duration_hours,
+            DATEDIFF(HOUR, t.start_date, ISNULL(t.closed_date, GETDATE())) AS hours_taken,
+            CASE
+                WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
+                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
+                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
+                ELSE 'Other'
+            END AS sla_status
         FROM Tickets t
         INNER JOIN Priority p ON t.priority_id = p.id
         LEFT JOIN Team tcb ON t.team_created_by = tcb.id_team
@@ -158,3 +188,14 @@ foreach ($priorities as $filterValue) {
 }
 
 echo json_encode($response, JSON_PRETTY_PRINT);
+
+sqlsrv_free_stmt($stmt);
+if (isset($stmtCount)) {
+    sqlsrv_free_stmt($stmtCount);
+}
+if (isset($stmtTickets)) {
+    sqlsrv_free_stmt($stmtTickets);
+}
+sqlsrv_close($conn);
+
+?>

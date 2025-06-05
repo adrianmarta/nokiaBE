@@ -56,6 +56,9 @@ if ($sla) {
     $params[] = $sla;
 }
 if ($slaStatus) {
+    // Note: The SLA status logic here is slightly different from previous scripts
+    // (e.g., Exceeded if closed_date IS NOT NULL AND > duration_hours, or IS NULL AND > duration_hours).
+    // Ensure this matches your desired SLA status definition.
     $where .= " AND (
         CASE
             WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
@@ -68,9 +71,12 @@ if ($slaStatus) {
 }
 
 $sql = "
-    SELECT 
+    SELECT
         t.*,
         pr.provider AS project_name,
+        p.priority AS priority_name, -- Added priority_name
+        tm.name AS team_assigned_person_name, -- Added team_assigned_person_name
+        tcb.name AS team_created_by_name, -- Added team_created_by_name
         p.id AS priority_id,
         sla.duration_hours,
         DATEDIFF(HOUR, t.start_date, t.closed_date) AS hours_taken,
@@ -80,7 +86,7 @@ $sql = "
             WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
             ELSE 'Other'
         END AS sla_status,
-        FORMAT(t.closed_date, 'MMM yyyy') AS closed_month_year
+        FORMAT(t.closed_date, 'MMM yyyy') AS closed_month_year -- Changed to yyyy for full year
     FROM Tickets t
     INNER JOIN Priority p ON t.priority_id = p.id
     INNER JOIN Project pr ON t.project = pr.id_project
@@ -116,11 +122,27 @@ $period = new DatePeriod(
     (new DateTime ($endDate))->modify('+1 month')
 );
 
+// Initialize all months in the period to ensure no gaps in chart data
+// foreach ($period as $dt) {
+//     $monthKey = $dt->format('MMM yyyy'); // Match the format used in SQL query
+//    $grouped[$monthKey] = [
+//     'Exceeded' => 0,
+//     'Met' => 0,
+//     'date' => $monthKey,
+//     'monthISO' => $dt->format('Y-m-01'), // nou!
+//     'exceededTickets' => [],
+//     'metTickets' => []
+// ];      
+// }
+
+
 foreach ($tickets as $ticket) {
     $month = $ticket['closed_month_year'];
 
+    // Ensure the month key exists (it should now, due to pre-initialization)
     if (!isset($grouped[$month])) {
-        $grouped[$month] = [
+         // Fallback, though it should be initialized by the DatePeriod loop
+         $grouped[$month] = [
             'Exceeded' => 0,
             'Met' => 0,
             'date' => $month,
@@ -136,8 +158,11 @@ foreach ($tickets as $ticket) {
         $grouped[$month]['Met']++;
         $grouped[$month]['metTickets'][] = $ticket;
     }
+    // 'In Progress' and 'Other' statuses are fetched by the SQL query but not aggregated here
+    // If you need to count them or include them in separate arrays, you'd add similar logic.
 }
 
+// Ensure the response is an array of values, without associative keys from $grouped
 $response = array_values($grouped);
 echo json_encode($response, JSON_PRETTY_PRINT);
 

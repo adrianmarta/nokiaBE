@@ -34,18 +34,20 @@ if (!$startDate && !$endDate) {
 }
 
 $projects = [];
-$sql = "SELECT id_project FROM Project ORDER BY id_project";
+// --- MODIFIED: Fetch both ID and Name for Project table ---
+$sql = "SELECT id_project, provider FROM Project ORDER BY id_project";
 $stmt = sqlsrv_query($conn, $sql);
 if ($stmt === false) {
     die(print_r(sqlsrv_errors(), true));
 }
 while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-    $projects[] = $row['id_project'];
+    $projects[$row['id_project']] = $row['provider']; // Store ID => Name mapping
 }
+// --- END MODIFIED ---
 
 $response = [];
 
-foreach ($projects as $projectId) {
+foreach ($projects as $projectId => $projectName) { // Iterate using both ID and Name
     $where = "t.project = ?
         AND YEAR(t.start_date) = YEAR(GETDATE()) - 1
         AND (
@@ -53,7 +55,7 @@ foreach ($projects as $projectId) {
             (t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours) OR
             (t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours)
         )";
-    $params = [$projectId];
+    $params = [$projectId]; // Use ID for filtering
 
     if ($teamCreatedByName) {
         $where .= " AND tcb.name = ?";
@@ -70,6 +72,15 @@ foreach ($projects as $projectId) {
         $params[] = $priority;
     }
 
+    // This condition might conflict if $project is already used in the foreach loop.
+    // If $project is an external filter that narrows down the "projects" array, keep it.
+    // If this script is *meant* to iterate through all projects and then filter by a single one,
+    // this condition is redundant. Assuming it's an external filter.
+    if ($project) {
+        $where .= " AND pr.provider = ?";
+        $params[] = $project;
+    }
+
     if ($status) {
         $where .= " AND t.status = ?";
         $params[] = $status;
@@ -82,13 +93,13 @@ foreach ($projects as $projectId) {
 
     if ($slaStatus) {
         $where .= " AND (
-            CASE
-                WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
-                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
-                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
-                ELSE 'Other'
-            END
-        ) = ?";
+                CASE
+                    WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
+                    WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
+                    WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
+                    ELSE 'Other'
+                END
+            ) = ?";
         $params[] = $slaStatus;
     }
 
@@ -97,20 +108,23 @@ foreach ($projects as $projectId) {
         $params[] = $startDate;
         $params[] = $endDate . " 23:59:59";
     }
-    if ($project) {
-        $where .= " AND pr.provider = ?";
-        $params[] = $project;
-    }
 
+    // --- MODIFIED SQLTickets SELECT clause ---
     $sqlTickets = "
-        SELECT t.*, pr.provider as project_name, p.id as priority_id, sla.duration_hours,
-            DATEDIFF(HOUR, t.start_date, ISNULL(t.closed_date, GETDATE())) as hours_taken,
+        SELECT
+            t.*,
+            pr.provider AS project_name,
+            p.priority AS priority_name, -- Added priority name
+            tap.name AS team_assigned_person_name, -- Added assigned team name
+            tcb.name AS team_created_by_name, -- Added created by team name
+            sla.duration_hours,
+            DATEDIFF(HOUR, t.start_date, ISNULL(t.closed_date, GETDATE())) AS hours_taken,
             CASE
                 WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
                 WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
                 WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
                 ELSE 'Other'
-            END as sla_status
+            END AS sla_status
         FROM Tickets t
         INNER JOIN Priority p ON t.priority_id = p.id
         INNER JOIN Project pr ON t.project = pr.id_project
@@ -120,6 +134,7 @@ foreach ($projects as $projectId) {
         LEFT JOIN Team tap ON t.team_assigned_person = tap.id_team
         WHERE $where
     ";
+    // --- END MODIFIED ---
 
     $stmtTickets = sqlsrv_query($conn, $sqlTickets, $params);
     if ($stmtTickets === false) {
@@ -148,7 +163,7 @@ foreach ($projects as $projectId) {
     }
 
     $response[] = [
-        'name' => count($tickets) > 0 ? $tickets[0]['project_name'] : null,
+        'name' => $projectName, // Use the fetched project name directly
         'Met' => $counts['Met'],
         'Exceeded' => $counts['Exceeded'],
         'In Progress' => $counts['In Progress'],

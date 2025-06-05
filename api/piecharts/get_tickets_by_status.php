@@ -10,8 +10,9 @@ if (!$conn) {
     exit;
 }
 
+// Fetch all distinct statuses from the Tickets table
 $statuses = [];
-$sql = "SELECT DISTINCT status FROM Tickets";
+$sql = "SELECT DISTINCT status FROM Tickets ORDER BY status";
 $stmt = sqlsrv_query($conn, $sql);
 
 if ($stmt === false) {
@@ -21,71 +22,79 @@ if ($stmt === false) {
 while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $statuses[] = $row['status'];
 }
+sqlsrv_free_stmt($stmt);
 
-$teamCreatedByName = isset($_GET['team_created_by_name']) ? $_GET['team_created_by_name'] : null;
-$teamAssignedPersonName = isset($_GET['team_assigned_person_name']) ? $_GET['team_assigned_person_name'] : null;
-$priority = isset($_GET['priority']) ? $_GET['priority'] : null;
-$project = isset($_GET['project']) ? $_GET['project'] : null;
-$status = isset($_GET['status']) ? $_GET['status'] : null;
-$sla = isset($_GET['sla']) ? $_GET['sla'] : null;
+// Capture filter parameters from GET request
+$teamCreatedByName = $_GET['team_created_by_name'] ?? null;
+$teamAssignedPersonName = $_GET['team_assigned_person_name'] ?? null;
+$priority = $_GET['priority'] ?? null;
+$project = $_GET['project'] ?? null;
+$filterStatusParam = $_GET['status'] ?? null; // Renamed to avoid conflict with $statusLoopValue
+$sla = $_GET['sla'] ?? null;
 if ($sla) {
     $sla = rtrim($sla, "h");
 }
-$slaStatus = isset($_GET['slaStatus']) ? $_GET['slaStatus'] : null;
+$slaStatus = $_GET['slaStatus'] ?? null;
 
-$startDate = isset($_GET['startDate']) ? $_GET['startDate'] : null;
-$endDate = isset($_GET['endDate']) ? $_GET['endDate'] : null;
+$startDate = $_GET['startDate'] ?? null;
+$endDate = $_GET['endDate'] ?? null;
 
-// defaults
+// Handle default dates (moved up for clarity and correct application)
 if (!$startDate && !$endDate) {
     $startDate = date('Y-m-d', strtotime('-1 year'));
     $endDate = date('Y-m-d');
 } elseif ($startDate && !$endDate) {
-    $endDate = date('Y-m-d'); // default endDate = today
+    $endDate = date('Y-m-d');
 } elseif (!$startDate && $endDate) {
-    // default startDate = one year before endDate
     $startDate = date('Y-m-d', strtotime($endDate . ' -1 year'));
 }
 
-$currentYear = date('Y');
-
 $response = [];
 
-foreach ($statuses as $status) {
-    $where = "t.status = ? AND YEAR(t.start_date) = ?";
-    $params = [$status, $currentYear];
+foreach ($statuses as $statusLoopValue) { // This loop processes each distinct status
+    $whereConditions = ["t.status = ?"]; // Initial condition based on the current status in the loop
+    $params = [$statusLoopValue];
+
+    // Removed: YEAR(t.start_date) = YEAR(GETDATE()) - 1 condition, as it's handled by startDate/endDate.
 
     if ($teamCreatedByName) {
-        $where .= " AND tcb.name = ?";
+        $whereConditions[] = "tcb.name = ?";
         $params[] = $teamCreatedByName;
     }
 
     if ($teamAssignedPersonName) {
-        $where .= " AND tap.name = ?";
+        $whereConditions[] = "tap.name = ?";
         $params[] = $teamAssignedPersonName;
     }
 
     if ($priority) {
-        $where .= " AND p.priority = ?";
+        $whereConditions[] = "p.priority = ?";
         $params[] = $priority;
     }
 
     if ($project) {
-        $where .= " AND tp.provider = ?";
+        $whereConditions[] = "tp.provider = ?";
         $params[] = $project;
     }
 
-    if ($status) {
-        $where .= " AND t.status = ?";
-        $params[] = $status;
+    // Removed: redundant if ($status) check as the loop variable $statusLoopValue already handles it.
+    // Also, if $filterStatusParam (from $_GET) is set, it would narrow down the list of statuses
+    // that this script would fetch initially. Assuming the intent is to iterate all statuses,
+    // and if a specific status is filtered via GET, it should affect the overall result, not
+    // this loop's iteration.
+    // If you want to filter the *initial list* of statuses based on $filterStatusParam:
+    if ($filterStatusParam && $filterStatusParam !== $statusLoopValue) {
+        continue; // Skip this iteration if the GET status doesn't match the current loop status
     }
 
+
     if ($sla) {
-        $where .= " AND sla.duration_hours = ?";
+        $whereConditions[] = "sla.duration_hours = ?";
         $params[] = $sla;
     }
+
     if ($slaStatus) {
-        $where .= " AND (
+        $whereConditions[] = " (
             CASE
                 WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
                 WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
@@ -95,22 +104,26 @@ foreach ($statuses as $status) {
         ) = ?";
         $params[] = $slaStatus;
     }
+
+    // Apply date range filtering
     if ($startDate && $endDate) {
-        $where .= " AND t.assigned_date BETWEEN ? AND ?";
+        $whereConditions[] = "t.assigned_date BETWEEN ? AND ?";
         $params[] = $startDate;
         $params[] = $endDate . " 23:59:59";
     }
 
-    // COUNT query
+    $where = "WHERE " . implode(" AND ", $whereConditions);
+
+    // COUNT query: ensure all necessary LEFT JOINs are present for filtering
     $sqlCount = "
         SELECT COUNT(*) AS cnt
         FROM Tickets t
-        INNER JOIN Priority p ON t.priority_id = p.id
+        LEFT JOIN Priority p ON t.priority_id = p.id
         LEFT JOIN Team tcb ON t.team_created_by = tcb.id_team
         LEFT JOIN Team tap ON t.team_assigned_person = tap.id_team
         LEFT JOIN Project tp ON t.project = tp.id_project
-        INNER JOIN SLA sla ON t.priority_id = sla.priority_id
-        WHERE $where
+        LEFT JOIN SLA sla ON t.priority_id = sla.priority_id
+        $where
     ";
     $stmtCount = sqlsrv_query($conn, $sqlCount, $params);
     if ($stmtCount === false) {
@@ -121,17 +134,31 @@ foreach ($statuses as $status) {
     if ($row = sqlsrv_fetch_array($stmtCount, SQLSRV_FETCH_ASSOC)) {
         $count = $row['cnt'];
     }
+    sqlsrv_free_stmt($stmtCount);
 
-    // TICKETS query
+    // TICKETS query: include all necessary fields for tooltips/details
     $sqlTickets = "
-        SELECT t.*
+        SELECT
+            t.*,
+            p.priority AS priority_name,
+            tcb.name AS team_created_by_name,
+            tap.name AS team_assigned_person_name,
+            tp.provider AS project_name,
+            sla.duration_hours,
+            DATEDIFF(HOUR, t.start_date, ISNULL(t.closed_date, GETDATE())) AS hours_taken,
+            CASE
+                WHEN t.closed_date IS NOT NULL AND DATEDIFF(HOUR, t.start_date, t.closed_date) <= sla.duration_hours THEN 'Met'
+                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) > sla.duration_hours THEN 'Exceeded'
+                WHEN t.closed_date IS NULL AND DATEDIFF(HOUR, t.start_date, GETDATE()) <= sla.duration_hours THEN 'In Progress'
+                ELSE 'Other'
+            END AS sla_status
         FROM Tickets t
-        INNER JOIN Priority p ON t.priority_id = p.id
+        LEFT JOIN Priority p ON t.priority_id = p.id
         LEFT JOIN Team tcb ON t.team_created_by = tcb.id_team
         LEFT JOIN Team tap ON t.team_assigned_person = tap.id_team
         LEFT JOIN Project tp ON t.project = tp.id_project
-        INNER JOIN SLA sla ON t.priority_id = sla.priority_id
-        WHERE $where
+        LEFT JOIN SLA sla ON t.priority_id = sla.priority_id
+        $where
     ";
     $stmtTickets = sqlsrv_query($conn, $sqlTickets, $params);
     if ($stmtTickets === false) {
@@ -147,9 +174,10 @@ foreach ($statuses as $status) {
         }
         $tickets[] = $row;
     }
+    sqlsrv_free_stmt($stmtTickets);
 
     $response[] = [
-        'status' => $status,
+        'status' => $statusLoopValue,
         'count' => $count,
         'tickets' => $tickets,
     ];
@@ -157,6 +185,5 @@ foreach ($statuses as $status) {
 
 echo json_encode($response, JSON_PRETTY_PRINT);
 
-sqlsrv_free_stmt($stmt);
 sqlsrv_close($conn);
 ?>
