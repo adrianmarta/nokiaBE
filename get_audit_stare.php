@@ -61,33 +61,32 @@ try {
     $filters = [];
     $params  = [];
 
-    // 4a) Team filter:
-    if ($id_rol === 2) {
-    // Restrict to teams under projects owned by this admin
-    $filters[] = "t.team_assigned_person IN (
-        SELECT t2.id_team
-        FROM Team AS t2
-        JOIN Project AS p ON t2.id_project = p.id_project
-        WHERE p.id_user = ?
-    )";
-    $params[] = $id_user;
-
-    // If team_id is specified, further filter to that exact team
+ if ($id_rol === 2) {
     if (!empty($_GET['team_id'])) {
-        $filters[] = "t.team_assigned_person = ?";
-        $params[]  = (int)$_GET['team_id'];
+        // Restrict to specific team but ONLY if owned by admin
+        $filters[] = "t.team_assigned_person = ? AND t.team_assigned_person IN (
+            SELECT t2.id_team
+            FROM Team AS t2
+            JOIN Project AS p ON t2.id_project = p.id_project
+            WHERE p.id_user = ?
+        )";
+        $params[] = (int)$_GET['team_id'];
+        $params[] = $id_user;
+    } else {
+        // No team filter → fetch all teams from admin’s projects
+        $filters[] = "t.team_assigned_person IN (
+            SELECT t2.id_team
+            FROM Team AS t2
+            JOIN Project AS p ON t2.id_project = p.id_project
+            WHERE p.id_user = ?
+        )";
+        $params[] = $id_user;
     }
-} elseif ($id_rol === 3 && !empty($_GET['team_id'])) {
-    // Super-admin can filter directly
+}
+    if ($id_rol === 3 && !empty($_GET['team_id'])) {
     $filters[] = "t.team_assigned_person = ?";
     $params[]  = (int)$_GET['team_id'];
 }
-    elseif ($id_rol === 3 && !empty($_GET['team_id'])) {
-        // Super-admin can filter by any team_id
-        $filters[] = "t.team_assigned_person = ?";
-        $params[]  = (int)$_GET['team_id'];
-    }
-
     // 4b) Date range filters:
     if (!empty($_GET['start_date'])) {
         // Assume format YYYY-MM-DD; include rows at or after start_date 00:00:00
@@ -106,11 +105,24 @@ try {
         $params[]  = (int)$_GET['project_id'];
     }
 
-    // 4d) User filter (audit action performed by a.id_user):
-    if (!empty($_GET['user_id'])) {
+ if (!empty($_GET['user_id'])) {
+    if ($id_rol === 2) {
+        $filters[] = "a.id_user = ? AND a.id_user IN (
+            SELECT u2.id_user
+            FROM Utilizator u2
+            JOIN Team t2 ON u2.id_team = t2.id_team
+            JOIN Project p ON t2.id_project = p.id_project
+            WHERE p.id_user = ?
+        )";
+        $params[] = (int)$_GET['user_id'];
+        $params[] = $id_user;
+    } else {
         $filters[] = "a.id_user = ?";
-        $params[]  = (int)$_GET['user_id'];
+        $params[] = (int)$_GET['user_id'];
     }
+
+}
+
 
     // 4e) Ticket filter:
   if (!empty($_GET['ticket_id'])) {
